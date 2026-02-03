@@ -12,7 +12,7 @@ class Supplier(BaseModel):
     contract_valid_until: date
 
 
-class Products(BaseModel):
+class Product(BaseModel):
     sku: str = Field(..., pattern=r'^[A-Z]{3} - [0-9]{6}$')
     name: str
     current_stock: int = Field(ge=0, default=0)

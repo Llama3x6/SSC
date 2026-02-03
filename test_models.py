@@ -1,4 +1,4 @@
-from models import Supplier, Products, Order
+from models import Supplier, Product, Order
 from datetime import date
 from pydantic import ValidationError
 
@@ -18,7 +18,7 @@ except ValidationError as e:
 
 # Test 2: Should FAIL (negative stock)
 try:
-    invalid_product = Products(
+    invalid_product = Product(
         sku="INV-001001",
         name="Invalid Item",
         current_stock=-5,  # Business logic violation!
