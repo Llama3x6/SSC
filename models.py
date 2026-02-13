@@ -13,7 +13,7 @@ class Supplier(BaseModel):
 
 
 class Product(BaseModel):
-    sku: str = Field(..., pattern=r'^[A-Z]{3} - [0-9]{6}$')
+    sku: str = Field(..., pattern=r'^[A-Z]{3}-[0-9]{6}$')  # No spaces    
     name: str
     current_stock: int = Field(ge=0, default=0)
     reorder_threshold: PositiveInt #probbly make it a f() of like EOQ
