@@ -95,6 +95,15 @@ def delete_product(sku: str):
     """
     if sku not in products_db:
         raise HTTPException(status_code=404, detail="Product not found")
+    
+        # Check if any order references this product
+    for order in orders_db.values():
+        if order.product_sku == sku:
+            raise HTTPException(
+                status_code=409,  # Conflict
+                detail=f"Cannot delete product '{sku}' because it is referenced by order(s)"
+            )
+
     del products_db[sku]
     # No content returned, just a successful empty response
     return None
@@ -240,20 +249,40 @@ def delete_order(order_id: int):
     del orders_db[order_id]
     return None
 
-# Optional: Endpoint to transition order status (if you want a more controlled state machine)
+
+
 @app.patch("/orders/{order_id}/status", response_model=Order)
 def change_order_status(order_id: int, new_status: str):
     """
-    Update only the status of an order.
-    This is a simple example; you could add validation for allowed transitions.
+    Update the status of an order with business rule validation.
+    Allowed transitions:
+      - drafted    → confirmed, cancelled
+      - confirmed  → shipped, cancelled
+      - shipped    → (none)
+      - cancelled  → (none)
     """
     if order_id not in orders_db:
         raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Define allowed transitions as a dictionary
+    allowed_transitions = {
+        "drafted": ["confirmed", "cancelled"],
+        "confirmed": ["shipped", "cancelled"],
+        "shipped": [],          # No transitions from shipped
+        "cancelled": []         # Terminal state
+    }
+    
     order = orders_db[order_id]
-    # Optional: check if transition is allowed (e.g., drafted -> confirmed, but not shipped -> drafted)
-    # For now, just set it.
-    if new_status not in ["drafted", "confirmed", "shipped", "cancelled"]:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    current = order.status
+    
+    # Check if the new status is allowed from the current status
+    if new_status not in allowed_transitions.get(current, []):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid transition from '{current}' to '{new_status}'"
+        )
+    
+    # Update and save
     order.status = new_status
     orders_db[order_id] = order
     return order

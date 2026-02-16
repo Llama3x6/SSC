@@ -6,7 +6,7 @@ from typing import Optional
 
 
 class Supplier(BaseModel):
-    id: PositiveInt
+    id: Optional[PositiveInt] = None #set by db not user
     name: str = Field(..., min_length=1, max_length=100)
     reliability_score: float = Field(ge=0.0, le=1.0, default=1.0)
     contract_valid_until: date
@@ -25,4 +25,4 @@ class Order(BaseModel):
     product_sku: str
     quantity: PositiveInt
     order_date: date = Field(default_factory=date.today)
-    status: str = Field(default="drafted", pattern='^(drafted|confirmed|shipped|cencelled)$' )
+    status: str = Field(default="drafted", pattern='^(drafted|confirmed|shipped|cancelled)$' )
