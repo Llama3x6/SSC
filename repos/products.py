@@ -13,12 +13,17 @@ products_db["XYZ-789012"] = Product(
 )
 
 
+def check_exist(sku: str) -> bool:
+    """Check if a product with the given SKU exists."""
+    return sku in products_db
+
+
 def get_all() -> list:
     """Return all products."""
     return list(products_db.values())
 
 
-def get_by_sku(sku: str) -> Optional[Product]:
+def get_by_sku(sku: str) -> Product:
     """Returns the product if found, otherwise returns None."""
     return products_db.get(sku)
 
@@ -35,11 +40,8 @@ def update(sku: str, updated_product: Product) -> Product:
     return updated_product
 
 
-def delete(sku: str) -> Optional[Product]:
+def delete(sku: str) -> Product:
     """Remove a product from inventory and return the deleted product, or None if not found."""
     deleted_product = products_db.get(sku)
-    if deleted_product is None:
-        return None
-    else:
-        del products_db[sku]
-        return deleted_product
+    del products_db[sku]
+    return deleted_product
