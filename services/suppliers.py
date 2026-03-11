@@ -1,10 +1,8 @@
 from datetime import datetime
 
-import repos.products as product_repo
 import repos.suppliers as supplier_repo
 from exceptions import (
     ContractTimeError,
-    DependencyConflictError,
     DuplicateResourceError,
     MismatchedDataError,
     NotFoundError,
