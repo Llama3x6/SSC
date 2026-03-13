@@ -1,3 +1,6 @@
+# services/orders.py
+# This service layer implements business logic for orders.
+
 import repos.orders as orders_repo
 import repos.products as products_repo
 from exceptions import InvalidStateTransitionError, MismatchedDataError, NotFoundError

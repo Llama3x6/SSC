@@ -1,3 +1,6 @@
+# services/suppliers.py
+# This service layer implements business logic for suppliers.
+
 from datetime import datetime
 
 import repos.suppliers as supplier_repo

@@ -1,3 +1,6 @@
+# routers/products.py
+# This module defines the API endpoints for managing products in the inventory.
+
 from typing import List
 
 from fastapi import APIRouter, HTTPException

@@ -1,3 +1,6 @@
+# services/products.py
+# This service layer implements business logic for products.
+
 import repos.orders as orders_repo
 import repos.products as product_repo
 from exceptions import (

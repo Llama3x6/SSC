@@ -1,3 +1,6 @@
+# routers/suppliers.py
+# This module defines the API endpoints for managing suppliers in the system.
+
 from typing import List
 
 from fastapi import APIRouter, HTTPException
