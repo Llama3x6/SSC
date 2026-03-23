@@ -1,4 +1,3 @@
-from ast import pattern
 from datetime import date
 from typing import Optional
 
@@ -23,8 +22,14 @@ class Product(BaseModel):
 class Order(BaseModel):
     id: Optional[PositiveInt] = None  # set by db not user
     product_sku: str
+    supplier_id: PositiveInt
     quantity: PositiveInt
     order_date: date = Field(default_factory=date.today)
     status: str = Field(
         default="drafted", pattern="^(drafted|confirmed|shipped|cancelled)$"
     )
+
+
+class SupplierProduct(BaseModel):
+    supplier_id: PositiveInt
+    sku: str

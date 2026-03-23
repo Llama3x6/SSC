@@ -3,7 +3,13 @@
 
 import repos.orders as orders_repo
 import repos.products as products_repo
-from exceptions import InvalidStateTransitionError, MismatchedDataError, NotFoundError
+import repos.supplier_product_rel as supplierProduct_repo
+from exceptions import (
+    InvalidRelationshipError,
+    InvalidStateTransitionError,
+    MismatchedDataError,
+    NotFoundError,
+)
 from models import Order
 
 # This layer is responsible for implementing business logic and rules,
@@ -39,6 +45,10 @@ def create(order):
         raise NotFoundError(
             f"Product with SKU '{order.product_sku}' does not exist, cannot create order"
         )
+    if not supplierProduct_repo.check_exist(order.supplier_id, order.product_sku):
+        raise InvalidRelationshipError(
+            f"SupplierProduct with supplier_id={order.supplier_id} and sku={order.product_sku} not found, cannot create order"
+        )
 
     return orders_repo.create(order)
 
@@ -48,6 +58,12 @@ def update(order_id: int, updated_order: Order) -> Order | None:
         raise MismatchedDataError("Order ID in URL and body must match")
     if not orders_repo.check_exist_id(order_id):
         raise NotFoundError(f"Order with ID '{order_id}' not found")
+    if not supplierProduct_repo.check_exist(
+        updated_order.supplier_id, updated_order.product_sku
+    ):
+        raise InvalidRelationshipError(
+            f"SupplierProduct with supplier_id={updated_order.supplier_id} and sku={updated_order.product_sku} not found, cannot update order"
+        )
     return orders_repo.update(order_id, updated_order)
 
 

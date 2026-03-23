@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException
 import services.suppliers as supplier_service
 from exceptions import (
     ContractTimeError,
-    DependencyConflictError,
     DuplicateResourceError,
     MismatchedDataError,
     NotFoundError,

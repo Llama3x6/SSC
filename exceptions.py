@@ -32,3 +32,9 @@ class ContractTimeError(Exception):
     """Raised when a contract timeline is invalid."""
 
     pass
+
+
+class InvalidRelationshipError(Exception):
+    """Raised when a relationship is invalid (e.g., supplier product not found)."""
+
+    pass
