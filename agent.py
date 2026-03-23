@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Annotated, Any, TypedDict
 
 import requests
+from dotenv import load_dotenv
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
@@ -10,6 +11,8 @@ from llm import call_llm
 from models import Order, Product
 
 BASE_URL = "http://localhost:8000"
+
+load_dotenv()
 
 
 class AgentState(TypedDict):
@@ -92,7 +95,7 @@ Proposed orders:
 def commit_orders(state: AgentState) -> dict[str, Any]:
     confirmed_orders = []
     for order in state["ordered"]:
-        payload = order.model_dump()
+        payload = order.model_dump(mode="json")
         resp = requests.post(f"{BASE_URL}/orders", json=payload)
         if resp.status_code == 201:
             confirmed_orders.append(Order(**resp.json()))
@@ -146,7 +149,11 @@ app = graph.compile(checkpointer=memory, interrupt_before=["commit_orders"])
 
 
 def run_agent():
-    config = {"configurable": {"thread_id": "reorder-run-1"}}
+    config = {
+        "configurable": {
+            "thread_id": f"reorder-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        }
+    }
 
     initial_state = {"reorder": [], "ordered": [], "log": []}
 
