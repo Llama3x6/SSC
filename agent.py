@@ -1,18 +1,20 @@
 import operator
+from datetime import datetime
 from typing import Annotated, Any, TypedDict
 
 import requests
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from llm import call_llm
 from models import Order, Product
 
 BASE_URL = "http://localhost:8000"
 
 
 class AgentState(TypedDict):
-    reorder: list[Product]
-    ordered: Annotated[list[Order], operator.add]
+    reorder: list[Product]  # products that qualify for reorder
+    ordered: Annotated[list[Order], operator.add]  # proposed reorders (confirm w/ hitl)
     log: Annotated[list[str], operator.add]
 
 
@@ -34,17 +36,56 @@ def should_reorder(state: AgentState) -> str:
 
 def propose_reorder(state: AgentState) -> dict[str, Any]:
     proposed_orders = []
+    log_messages = []
+
     for product in state["reorder"]:
+        resp = requests.get(
+            f"{BASE_URL}/supplier-product/supplier_recommendations",
+            params={"sku": product.sku},
+        )
+
+        if resp.status_code != 200 or not resp.json():
+            log_messages.append(f"No suppliers found for '{product.sku}' — skipping")
+            continue
+
+        top_supplier = resp.json()[0]
         order_qty = product.reorder_threshold * 5 - product.current_stock
+
         if order_qty > 0:
-            proposed_orders.append(Order(product_sku=product.sku, quantity=order_qty))
+            proposed_orders.append(
+                Order(
+                    product_sku=product.sku,
+                    supplier_id=top_supplier["id"],
+                    quantity=order_qty,
+                )
+            )
 
-    log_msg = f"Proposed {len(proposed_orders)} orders to replenish stock"
+    log_messages.append(f"Proposed {len(proposed_orders)} orders to replenish stock")
 
-    return {"ordered": proposed_orders, "log": [log_msg]}
+    return {"ordered": proposed_orders, "log": log_messages}
 
 
 # HITL approval for proposed orders happens
+def hitl_reorder_narrative(state: AgentState) -> dict[str, Any]:
+    products_summary = "\n".join(
+        f"- SKU: {p.sku}, Name: {p.name}, Stock: {p.current_stock}, Threshold: {p.reorder_threshold}"
+        for p in state["reorder"]
+    )
+    orders_summary = "\n".join(
+        f"- SKU: {o.product_sku}, Supplier ID: {o.supplier_id}, Quantity: {o.quantity}"
+        for o in state["ordered"]
+    )
+    prompt = f"""You are a supply chain assistant. Summarize the following reorder proposal in plain language for an operator who needs to approve it.
+Be concise. Explain what is low, why it triggered, what is being ordered, and from which supplier.
+
+Products below threshold:
+{products_summary}
+
+Proposed orders:
+{orders_summary}
+"""
+    narrative = call_llm(prompt)
+    return {"log": [f"REORDER NARRATIVE:\n{narrative}"]}
 
 
 # post orders to API and update state with confirmed orders
@@ -82,6 +123,7 @@ graph = StateGraph(AgentState)
 graph.add_node("fetch_products", fetch_products)
 graph.add_node("propose_reorder", propose_reorder)
 graph.add_node("commit_orders", commit_orders)
+graph.add_node("hitl_reorder_narrative", hitl_reorder_narrative)
 graph.add_node("log_run", log_run)
 
 graph.add_edge(START, "fetch_products")
@@ -91,7 +133,8 @@ graph.add_conditional_edges(
     {"reorder": "propose_reorder", "no_reorder": "log_run"},
 )
 # HITL approval for proposed orders happens here
-graph.add_edge("propose_reorder", "commit_orders")
+graph.add_edge("propose_reorder", "hitl_reorder_narrative")
+graph.add_edge("hitl_reorder_narrative", "commit_orders")
 graph.add_edge("commit_orders", "log_run")
 graph.add_edge("log_run", END)
 
@@ -119,9 +162,8 @@ def run_agent():
         print("No orders to propose.")
         return
 
-    print("\n--- Proposed Orders ---")
-    for order in proposed:
-        print(f"  SKU: {order.product_sku}, Qty: {order.quantity}")
+    print("\n--- Reorder Summary ---")
+    print(current_state.values["log"][-1])  # narrative is last log entry
 
     approval = input("\nApprove orders? (yes/no): ").strip().lower()
 

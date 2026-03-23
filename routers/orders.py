@@ -37,6 +37,8 @@ def create_order(order: Order):
         raise HTTPException(status_code=400, detail=str(e))
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except InvalidStateTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return created_order
 
 
@@ -49,6 +51,8 @@ def update_order(order_id: int, updated_order: Order):
         raise HTTPException(status_code=404, detail=str(e))
     except MismatchedDataError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except InvalidStateTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     return updated
 
 
