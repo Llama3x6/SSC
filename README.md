@@ -1,4 +1,4 @@
-# Sentient Supply Chain (SSC)
+# Sentient Supply Chain (SSC) v1.0
 
 A mock ERP system with an AI agent layer, built to demonstrate the translation 
 of supply chain operations logic into a well-engineered digital system.
@@ -29,7 +29,7 @@ ERP API (FastAPI)
 └── Repository layer — Data access only, swappable (in-memory → SQLAlchemy)
 
 Agent Layer (LangGraph)
-├── ReorderAgent     — Monitors stock, proposes orders, HITL approval
+├── agent.py     — Monitors stock, proposes orders, HITL approval
 ├── shift_report.py  — LLM-narrated shift summary from ERP data
 └── geopol_risk.py   — Geopolitical risk digest via GDELT + LLM reasoning
 ```
