@@ -25,9 +25,12 @@ def check_exist_sku(sku: str) -> bool:
 
 
 # get_all with sqlalchemy
-def get_all() -> list:
+def get_all(from_date=None) -> list:
     with SessionLocal() as session:
-        orders = session.query(DBOrder).all()  # returns list of db types
+        query = session.query(DBOrder)
+        if from_date:
+            query = query.filter(DBOrder.order_date >= from_date)
+        orders = query.all()
         return [Order.model_validate(o, from_attributes=True) for o in orders]
 
 

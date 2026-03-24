@@ -105,7 +105,7 @@ def commit_orders(state: AgentState) -> dict[str, Any]:
 
     log_msg = f"Committed {len(confirmed_orders)} orders to the system"
 
-    return {"ordered": confirmed_orders, "log": [log_msg]}
+    return {"log": [log_msg]}
 
 
 def log_run(state: AgentState) -> dict:

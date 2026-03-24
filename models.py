@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, PositiveInt
 class Supplier(BaseModel):
     id: Optional[PositiveInt] = None  # set by db not user
     name: str = Field(..., min_length=1, max_length=100)
+    country: Optional[str] = Field(default=None, pattern=r"^[A-Z]{2}$")
     reliability_score: float = Field(ge=0.0, le=1.0, default=1.0)
     contract_valid_until: date
 

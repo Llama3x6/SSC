@@ -1,19 +1,25 @@
 # routers/orders.py
 # This module defines the API endpoints for managing orders in the system.
 
-from typing import List
+from datetime import date
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException
 
 import services.orders as order_service
-from exceptions import InvalidStateTransitionError, MismatchedDataError, NotFoundError
+from exceptions import (
+    InvalidRelationshipError,
+    InvalidStateTransitionError,
+    MismatchedDataError,
+    NotFoundError,
+)
 from models import Order
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
 @router.get("/", response_model=List[Order])
-def list_orders():
+def list_orders(from_date: Optional[date] = None):
     """Return all orders."""
     return order_service.get_all()
 
@@ -37,7 +43,7 @@ def create_order(order: Order):
         raise HTTPException(status_code=400, detail=str(e))
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except InvalidStateTransitionError as e:
+    except InvalidRelationshipError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return created_order
 

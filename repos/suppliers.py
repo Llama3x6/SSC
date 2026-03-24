@@ -40,6 +40,7 @@ def create(supplier: Supplier) -> Supplier:
     with SessionLocal() as session:
         db_supplier = DBSupplier(
             name=supplier.name,
+            country=supplier.country,
             reliability_score=supplier.reliability_score,
             contract_valid_until=supplier.contract_valid_until,
         )
@@ -56,6 +57,7 @@ def update(supplier_id: int, updated_supplier: Supplier) -> Supplier:
             session.query(DBSupplier).filter(DBSupplier.id == supplier_id).first()
         )
         db_supplier.name = updated_supplier.name
+        db_supplier.country = updated_supplier.country
         db_supplier.reliability_score = updated_supplier.reliability_score
         db_supplier.contract_valid_until = updated_supplier.contract_valid_until
         session.commit()

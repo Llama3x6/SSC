@@ -18,9 +18,9 @@ from models import Order
 # This separation allows for cleaner code and easier maintenance.
 
 
-def get_all() -> list | None:
+def get_all(from_date=None) -> list | None:
     """Return all orders."""
-    return orders_repo.get_all()
+    return orders_repo.get_all(from_date=from_date)
 
 
 def get_by_id(order_id: int) -> Order | None:
