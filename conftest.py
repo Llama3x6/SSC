@@ -7,6 +7,7 @@ mutated before SQLAlchemy's engine is instantiated at import time.
 """
 
 import os
+from datetime import date, timedelta
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_ssc.db"
 
@@ -40,15 +41,36 @@ def client(setup_test_db):
         yield c
 
 
+# ── Test dates ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def valid_contract_date() -> str:
+    """Contract date comfortably in the future — for suppliers that must be accepted."""
+    return (date.today() + timedelta(days=365)).isoformat()
+
+
+@pytest.fixture
+def expired_contract_date() -> str:
+    """Contract that expired yesterday — the boundary case the service must reject."""
+    return (date.today() - timedelta(days=1)).isoformat()
+
+
+@pytest.fixture
+def recent_order_date() -> str:
+    """A plausible order date in the recent past."""
+    return (date.today() - timedelta(days=30)).isoformat()
+
+
 # ── Resource fixtures ─────────────────────────────────────────────────────────
 
 
 @pytest.fixture
-def supplier(client):
+def supplier(client, valid_contract_date):
     data = {
         "name": "Fixture Supplier",
         "reliability_score": 0.90,
-        "contract_valid_until": "2027-12-31",
+        "contract_valid_until": valid_contract_date,
     }
     resp = client.post("/suppliers/", json=data)
     assert resp.status_code == 201, f"Supplier fixture failed: {resp.text}"

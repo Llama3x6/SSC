@@ -7,11 +7,19 @@ Order: suppliers → products → supplier_product relations → orders
 """
 
 import sys
+from datetime import date, timedelta
 
 import requests
 
 BASE_URL = "http://127.0.0.1:8000"
 
+def days_from_today(n: int) -> str:
+    """Return an ISO date n days from today.
+
+    Seed data must stay valid whenever the script runs — the service layer
+    rejects contracts already expired, so absolute dates eventually break the seed.
+    """
+    return (date.today() + timedelta(days=n)).isoformat()
 
 def post(endpoint: str, payload: dict) -> dict:
     resp = requests.post(f"{BASE_URL}{endpoint}", json=payload)
@@ -33,7 +41,7 @@ s1 = post(
         "name": "AlphaComponents AG",
         "country": "DE",
         "reliability_score": 0.95,
-        "contract_valid_until": "2027-12-31",
+        "contract_valid_until": days_from_today(365),
     },
 )
 
@@ -43,7 +51,7 @@ s2 = post(
         "name": "BetaParts GmbH",
         "country": "TW",
         "reliability_score": 0.80,
-        "contract_valid_until": "2027-06-30",
+        "contract_valid_until": days_from_today(270),
     },
 )
 
@@ -53,7 +61,7 @@ s3 = post(
         "name": "GammaSourcing Ltd",
         "country": "CN",
         "reliability_score": 0.72,
-        "contract_valid_until": "2026-09-30",
+        "contract_valid_until": days_from_today(20),
     },
 )
 

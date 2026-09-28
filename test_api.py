@@ -6,10 +6,6 @@ Each test is isolated via fixtures defined in conftest.py.
 Run with: pytest test_api.py -v
 """
 
-import pytest
-
-BASE = ""  # TestClient handles base URL
-
 
 # ================================================================================
 # Products
@@ -115,11 +111,11 @@ class TestSuppliers:
         resp = client.put("/suppliers/999999", json=supplier)
         assert resp.status_code == 400
 
-    def test_delete_supplier(self, client):
+    def test_delete_supplier(self, client, valid_contract_date):
         data = {
             "name": "To Delete",
             "reliability_score": 0.5,
-            "contract_valid_until": "2027-01-01",
+            "contract_valid_until": valid_contract_date,
         }
         resp = client.post("/suppliers/", json=data)
         assert resp.status_code == 201
@@ -127,13 +123,13 @@ class TestSuppliers:
         assert client.delete(f"/suppliers/{sid}").status_code == 204
         assert client.get(f"/suppliers/{sid}").status_code == 404
 
-    def test_create_supplier_expired_contract(self, client):
+    def test_create_supplier_expired_contract(self, client, expired_contract_date):
         resp = client.post(
             "/suppliers/",
             json={
                 "name": "Expired Co",
                 "reliability_score": 0.5,
-                "contract_valid_until": "2020-01-01",
+                "contract_valid_until": expired_contract_date,
             },
         )
         assert resp.status_code == 400
@@ -211,7 +207,9 @@ class TestOrders:
         )
         assert resp.status_code == 404
 
-    def test_create_order_invalid_supplier_product_rel(self, client, product):
+    def test_create_order_invalid_supplier_product_rel(
+        self, client, product, valid_contract_date
+    ):
         """Supplier exists but does not supply this product — must fail."""
         # Create a second supplier with no relation to the product
         s2 = client.post(
@@ -219,7 +217,7 @@ class TestOrders:
             json={
                 "name": "Unrelated Supplier",
                 "reliability_score": 0.6,
-                "contract_valid_until": "2027-01-01",
+                "contract_valid_until": valid_contract_date,
             },
         ).json()
         resp = client.post(
@@ -243,14 +241,14 @@ class TestOrders:
         resp = client.get("/orders/999999")
         assert resp.status_code == 404
 
-    def test_update_order(self, client, order, product, supplier):
+    def test_update_order(self, client, order, product, supplier, recent_order_date):
         updated = {
             "id": order["id"],
             "product_sku": product["sku"],
             "supplier_id": supplier["id"],
             "quantity": 99,
             "status": "drafted",
-            "order_date": "2026-01-01",
+            "order_date": recent_order_date,
         }
         resp = client.put(f"/orders/{order['id']}", json=updated)
         assert resp.status_code == 200
