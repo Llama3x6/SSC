@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from llm import call_llm
-from models import Order, Product
+from llm import call_llm, call_llm_structured
+from models import Order, Product, ReorderNarrative
 
 BASE_URL = "http://localhost:8000"
 
@@ -78,17 +78,32 @@ def hitl_reorder_narrative(state: AgentState) -> dict[str, Any]:
         f"- SKU: {o.product_sku}, Supplier ID: {o.supplier_id}, Quantity: {o.quantity}"
         for o in state["ordered"]
     )
-    prompt = f"""You are a supply chain assistant. Summarize the following reorder proposal in plain language for an operator who needs to approve it.
-Be concise. Explain what is low, why it triggered, what is being ordered, and from which supplier.
+    prompt = f"""You are a supply chain assistant. Analyze the following reorder proposal and provide structured feedback for a human operator.
 
 Products below threshold:
 {products_summary}
 
 Proposed orders:
 {orders_summary}
+
+Provide:
+1. A clear summary of what's happening
+2. List of products below threshold with their stock levels
+3. List of proposed orders with details
+4. Any risk flags (supplier reliability, cost concerns, etc.)
+5. A clear recommendation: 'approve', 'review_first', or 'reject_and_reason'
 """
-    narrative = call_llm(prompt)
-    return {"log": [f"REORDER NARRATIVE:\n{narrative}"]}
+    narrative = call_llm_structured(prompt, ReorderNarrative)
+
+    # Format the structured output for the log
+    formatted = f"""REORDER NARRATIVE (STRUCTURED):
+Summary: {narrative.summary}
+Low Products: {', '.join(narrative.low_products)}
+Proposed Orders: {', '.join(narrative.proposed_orders)}
+Risk Flags: {', '.join(narrative.risk_flags) if narrative.risk_flags else 'None'}
+Recommendation: {narrative.recommendation}
+"""
+    return {"log": [formatted]}
 
 
 # post orders to API and update state with confirmed orders

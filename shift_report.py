@@ -4,7 +4,8 @@ from datetime import date, timedelta
 import requests
 from dotenv import load_dotenv
 
-from llm import call_llm
+from llm import call_llm_structured
+from models import ShiftReport
 
 load_dotenv()
 
@@ -74,11 +75,34 @@ def build_prompt(data: dict) -> str:
 def run_report():
     data = fetch_data()
     prompt = build_prompt(data)
-    narrative = call_llm(prompt)
-    timestamp = date.today().isoformat()
+    prompt += "\nProvide a structured shift report with clear sections and alerts."
+
+    # Get structured output
+    report = call_llm_structured(prompt, ShiftReport)
+
+    # Format for output
+    formatted = f"""Generated: {report.timestamp}
+
+SHIFT REPORT
+============
+
+{report.summary}
+
+"""
+
+    for section in report.sections:
+        formatted += f"\n{section.category.upper()}:\n"
+        for item in section.items:
+            formatted += f"  • {item}\n"
+
+    if report.alerts:
+        formatted += f"\nALERTS (Urgent):\n"
+        for alert in report.alerts:
+            formatted += f"  ⚠ {alert}\n"
+
     with open(REPORT_FILE, "w") as f:
-        f.write(f"Generated: {timestamp}\n\n{narrative}")
-    print(narrative)
+        f.write(formatted)
+    print(formatted)
 
 
 if __name__ == "__main__":

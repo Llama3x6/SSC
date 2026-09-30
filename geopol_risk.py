@@ -8,7 +8,8 @@ from datetime import date, timedelta
 import requests
 from dotenv import load_dotenv
 
-from llm import call_llm
+from llm import call_llm_structured
+from models import GeopoliticalRiskDigest
 
 load_dotenv()
 
@@ -80,18 +81,40 @@ def build_prompt(supplier_country: dict) -> str:
     return prompt
 
 
-# llm built report
+# llm built report with structured output
 def run_report():
     data = fetch_data()
     prompt = build_prompt(data)
-    print("--- DEBUG PROMPT ---")
-    print(prompt)
-    print("--- END PROMPT ---")
-    narrative = call_llm(prompt)
-    timestamp = date.today().isoformat()
+    prompt += "\nProvide a structured geopolitical risk assessment with clear country-level analysis and actionable items."
+
+    # Get structured output
+    digest = call_llm_structured(prompt, GeopoliticalRiskDigest)
+
+    # Format for output
+    formatted = f"""Generated: {digest.timestamp}
+
+GEOPOLITICAL RISK DIGEST
+========================
+
+{digest.summary}
+
+"""
+
+    for country in digest.countries:
+        formatted += f"\n{country.country.upper()} (Risk Level: {country.risk_level})\n"
+        formatted += f"Suppliers: {', '.join(country.suppliers)}\n"
+        formatted += "Concerns:\n"
+        for concern in country.concerns:
+            formatted += f"  • {concern}\n"
+
+    if digest.actionable_items:
+        formatted += f"\nACTIONABLE ITEMS:\n"
+        for item in digest.actionable_items:
+            formatted += f"  → {item}\n"
+
     with open(REPORT_FILE, "w") as f:
-        f.write(f"Generated: {timestamp}\n\n{narrative}")
-    print(narrative)
+        f.write(formatted)
+    print(formatted)
 
 
 if __name__ == "__main__":
