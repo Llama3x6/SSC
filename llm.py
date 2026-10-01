@@ -5,7 +5,7 @@ import requests
 
 
 def call_llm(prompt: str) -> str:
-    provider = os.getenv("LLM_PROVIDER", "anthropic")
+    provider = os.getenv("LLM_PROVIDER", "gemini")
 
     if provider == "anthropic":
         return _call_anthropic(prompt)
@@ -22,9 +22,10 @@ def _call_anthropic(prompt: str) -> str:
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+                "anthropic-version": "2023-06-01",
             },
             json={
-                "model": "claude-opus-4-6",
+                "model": os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
                 "max_tokens": 500,
                 "messages": [{"role": "user", "content": prompt}],
             },
@@ -42,9 +43,13 @@ def _call_anthropic(prompt: str) -> str:
 def _call_gemini(prompt: str) -> str:
     try:
         api_key = os.environ["GEMINI_API_KEY"]
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         resp = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
-            headers={"Content-Type": "application/json"},
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": api_key,
+            },
             json={"contents": [{"parts": [{"text": prompt}]}]},
         )
         resp.raise_for_status()
