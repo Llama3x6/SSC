@@ -104,10 +104,11 @@ def call_llm_structured(
     max_retries: int = 3,
 ) -> T:
     """
-    LLM call with structured output validation.
+    LLM call with schema-constrained output.
 
-    Uses Anthropic's json_schema for structured outputs, validates against
-    Pydantic schema, and retries on validation failure.
+    Both providers constrain generation server-side from the schema derived
+    from `schema`, and the response is validated against the Pydantic model
+    before being returned.
 
     Args:
         prompt: The prompt to send to the LLM
@@ -126,7 +127,6 @@ def call_llm_structured(
     if provider == "anthropic":
         return _call_anthropic_structured(prompt, schema, max_retries)
     elif provider == "gemini":
-        # Gemini fallback: use plain text + Pydantic validation
         return _call_gemini_structured(prompt, schema, max_retries)
     else:
         raise ValueError(f"Unknown LLM_PROVIDER: '{provider}'")
@@ -254,21 +254,16 @@ def _call_gemini_structured(
     max_retries: int,
 ) -> T:
     """
-    Gemini fallback: plain text + Pydantic validation.
+    Gemini structured output via `generationConfig.responseSchema`.
 
-    Sends prompt to Gemini and validates response against schema.
-    Retries on validation failure.
+    Constrained server-side, same as the Anthropic path. The retry loop stays
+    as a guard for anything Pydantic rejects that the sent schema could not
+    express.
     """
-    # Add JSON schema instruction to prompt
-    json_schema = schema.model_json_schema()
-    augmented_prompt = f"""{prompt}
+    json_schema = _flatten_schema(schema)
+    last_error: Exception | None = None
 
-Please respond with ONLY valid JSON matching this schema:
-{json.dumps(json_schema, indent=2)}
-
-Do not include markdown formatting, code blocks, or explanatory text — just the raw JSON."""
-
-    for attempt in range(max_retries):
+    for _ in range(max_retries):
         try:
             resp = requests.post(
                 _gemini_url(_gemini_model()),
@@ -276,35 +271,40 @@ Do not include markdown formatting, code blocks, or explanatory text — just th
                     "Content-Type": "application/json",
                     "x-goog-api-key": os.environ["GEMINI_API_KEY"],
                 },
-                json={"contents": [{"parts": [{"text": augmented_prompt}]}]},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "responseMimeType": "application/json",
+                        "responseSchema": json_schema,
+                    },
+                },
             )
             resp.raise_for_status()
-            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-
-            # Parse and validate
-            parsed = json.loads(text)
-            validated = schema.model_validate(parsed)
-            return validated
-
-        except json.JSONDecodeError as e:
-            if attempt == max_retries - 1:
-                raise RuntimeError(
-                    f"Failed to parse JSON after {max_retries} retries: {e}"
-                ) from e
-            continue
-        except ValidationError as e:
-            if attempt == max_retries - 1:
-                raise RuntimeError(
-                    f"Schema validation failed after {max_retries} retries:\n{e}"
-                ) from e
-            continue
         except requests.HTTPError as e:
             raise RuntimeError(
                 f"Gemini API error: {e.response.status_code} — {e.response.text}"
             ) from e
-        except Exception as e:
-            raise RuntimeError(f"Gemini structured call failed: {e}") from e
+        except requests.RequestException as e:
+            raise RuntimeError(f"Gemini request failed: {e}") from e
+
+        payload = resp.json()
+        candidate = payload["candidates"][0]
+
+        # A truncated candidate is a 200 whose JSON is cut mid-structure.
+        if candidate.get("finishReason") == "MAX_TOKENS":
+            raise RuntimeError(
+                "Gemini response hit the token limit and is truncated; "
+                "raise maxOutputTokens or shorten the prompt"
+            )
+
+        text = candidate["content"]["parts"][0]["text"]
+        try:
+            return schema.model_validate(json.loads(text))
+        except (json.JSONDecodeError, ValidationError) as e:
+            last_error = e
+            continue
 
     raise RuntimeError(
-        f"Failed to get valid structured output after {max_retries} retries"
-    )
+        f"Gemini structured output failed validation after {max_retries} "
+        f"attempts: {last_error}"
+    ) from last_error
