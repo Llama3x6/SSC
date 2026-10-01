@@ -3,7 +3,7 @@
 
 
 import time
-from datetime import date, timedelta
+from datetime import date
 
 import requests
 from dotenv import load_dotenv

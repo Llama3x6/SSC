@@ -1,7 +1,7 @@
 # llm.py
 import json
 import os
-from typing import Generic, Type, TypeVar
+from typing import Type, TypeVar
 
 import requests
 from pydantic import BaseModel, ValidationError

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from llm import call_llm, call_llm_structured
+from llm import call_llm_structured
 from models import Order, Product, ReorderNarrative
 
 BASE_URL = "http://localhost:8000"

@@ -4,7 +4,7 @@ from datetime import date
 
 from pydantic import ValidationError
 
-from models import Order, Product, Supplier
+from models import Product, Supplier
 
 try:
     reliable_supplier = Supplier(
