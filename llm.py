@@ -8,10 +8,31 @@ from pydantic import BaseModel, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
 
+# Pins the Anthropic request/response format. Required on every call; the API
+# rejects requests without it.
+ANTHROPIC_VERSION = "2023-06-01"
+
+
+def _anthropic_model() -> str:
+    """Model id for Anthropic calls, overridable without touching the code."""
+    return os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+
+
+def _gemini_model() -> str:
+    """Model id for Gemini calls, overridable without touching the code."""
+    return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def _gemini_url(model: str) -> str:
+    return (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent"
+    )
+
 
 def call_llm(prompt: str) -> str:
     """Plain text LLM call — no structured output."""
-    provider = os.getenv("LLM_PROVIDER", "anthropic")
+    provider = os.getenv("LLM_PROVIDER", "gemini")
 
     if provider == "anthropic":
         return _call_anthropic(prompt)
@@ -44,7 +65,7 @@ def call_llm_structured(
         RuntimeError: If API call fails or max retries exceeded
         ValidationError: If output cannot be validated (after retries)
     """
-    provider = os.getenv("LLM_PROVIDER", "anthropic")
+    provider = os.getenv("LLM_PROVIDER", "gemini")
 
     if provider == "anthropic":
         return _call_anthropic_structured(prompt, schema, max_retries)
@@ -63,9 +84,10 @@ def _call_anthropic(prompt: str) -> str:
             headers={
                 "Content-Type": "application/json",
                 "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+                "anthropic-version": ANTHROPIC_VERSION,
             },
             json={
-                "model": "claude-opus-4-6",
+                "model": _anthropic_model(),
                 "max_tokens": 500,
                 "messages": [{"role": "user", "content": prompt}],
             },
@@ -100,9 +122,10 @@ def _call_anthropic_structured(
                 headers={
                     "Content-Type": "application/json",
                     "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+                    "anthropic-version": ANTHROPIC_VERSION,
                 },
                 json={
-                    "model": "claude-opus-4-6",
+                    "model": _anthropic_model(),
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}],
                     "betas": ["interleaved-thinking-2025-05-14"],
@@ -160,10 +183,12 @@ def _call_anthropic_structured(
 def _call_gemini(prompt: str) -> str:
     """Plain text call to Gemini API."""
     try:
-        api_key = os.environ["GEMINI_API_KEY"]
         resp = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
-            headers={"Content-Type": "application/json"},
+            _gemini_url(_gemini_model()),
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": os.environ["GEMINI_API_KEY"],
+            },
             json={"contents": [{"parts": [{"text": prompt}]}]},
         )
         resp.raise_for_status()
@@ -198,10 +223,12 @@ Do not include markdown formatting, code blocks, or explanatory text — just th
 
     for attempt in range(max_retries):
         try:
-            api_key = os.environ["GEMINI_API_KEY"]
             resp = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
-                headers={"Content-Type": "application/json"},
+                _gemini_url(_gemini_model()),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": os.environ["GEMINI_API_KEY"],
+                },
                 json={"contents": [{"parts": [{"text": augmented_prompt}]}]},
             )
             resp.raise_for_status()
