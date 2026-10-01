@@ -1,7 +1,7 @@
 from datetime import date
-from typing import Optional
+from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, Field, PositiveInt
+from pydantic import BaseModel, BeforeValidator, Field, PositiveInt
 
 
 class Supplier(BaseModel):
@@ -41,6 +41,25 @@ class SupplierProduct(BaseModel):
 # =============================================================================================
 
 
+def _lowercase(value: object) -> object:
+    """Normalise case before matching a Literal.
+
+    Structured outputs constrain the model to the enum values, but the API
+    documents that the casing it returns may differ from the casing in the
+    schema, so the comparison has to be case-insensitive.
+    """
+    return value.lower() if isinstance(value, str) else value
+
+
+# Closed sets rather than free text: the point of validating output is that an
+# unexpected value fails here instead of reaching an operator's screen.
+Recommendation = Annotated[
+    Literal["approve", "review_first", "reject_and_reason"],
+    BeforeValidator(_lowercase),
+]
+RiskLevel = Annotated[Literal["low", "medium", "high"], BeforeValidator(_lowercase)]
+
+
 class ReorderNarrative(BaseModel):
     """Structured output for HITL reorder approval narrative."""
 
@@ -59,9 +78,13 @@ class ReorderNarrative(BaseModel):
         default_factory=list,
         description="Any risk flags or concerns (empty if none)",
     )
-    recommendation: str = Field(
+    recommendation: Recommendation = Field(
         ...,
-        description="Clear recommendation: 'approve', 'review_first', or 'reject_and_reason'",
+        description=(
+            "approve if the proposal is safe to commit as-is, review_first if an "
+            "operator should check something before committing, "
+            "reject_and_reason if it should not be committed"
+        ),
     )
 
 
@@ -75,11 +98,12 @@ class ShiftReportItem(BaseModel):
 
 
 class ShiftReport(BaseModel):
-    """Structured shift report output."""
+    """Structured shift report output.
 
-    timestamp: str = Field(
-        ..., description="ISO-formatted timestamp when report was generated"
-    )
+    No timestamp field: when the report ran is known to the caller and is not
+    something to ask a language model for.
+    """
+
     summary: str = Field(..., description="Executive summary of shift status")
     sections: list[ShiftReportItem] = Field(
         ..., description="Report sections with categorized items"
@@ -95,20 +119,19 @@ class RiskCountry(BaseModel):
 
     country: str = Field(..., description="Country name")
     suppliers: list[str] = Field(..., description="Suppliers in this country")
-    risk_level: str = Field(
-        ..., description="Risk level: 'low', 'medium', or 'high'"
-    )
+    risk_level: RiskLevel = Field(..., description="Risk level for this country")
     concerns: list[str] = Field(
         ..., description="Specific geopolitical concerns for this country"
     )
 
 
 class GeopoliticalRiskDigest(BaseModel):
-    """Structured geopolitical risk digest output."""
+    """Structured geopolitical risk digest output.
 
-    timestamp: str = Field(
-        ..., description="ISO-formatted timestamp when report was generated"
-    )
+    No timestamp field: when the digest ran is known to the caller and is not
+    something to ask a language model for.
+    """
+
     summary: str = Field(
         ...,
         description="Executive summary of overall supply chain geopolitical risk",

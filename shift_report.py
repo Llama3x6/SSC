@@ -86,8 +86,8 @@ def run_report():
     # Get structured output
     report = call_llm_structured(prompt, ShiftReport)
 
-    # Format for output
-    formatted = f"""Generated: {report.timestamp}
+    # Format for output. The generation date comes from the clock, not the model.
+    formatted = f"""Generated: {date.today().isoformat()}
 
 SHIFT REPORT
 ============

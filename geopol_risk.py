@@ -99,8 +99,8 @@ def run_report():
     # Get structured output
     digest = call_llm_structured(prompt, GeopoliticalRiskDigest)
 
-    # Format for output
-    formatted = f"""Generated: {digest.timestamp}
+    # Format for output. The generation date comes from the clock, not the model.
+    formatted = f"""Generated: {date.today().isoformat()}
 
 GEOPOLITICAL RISK DIGEST
 ========================
