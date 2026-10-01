@@ -1,7 +1,7 @@
 # llm.py
 import json
 import os
-from typing import Type, TypeVar
+from typing import Any, Type, TypeVar
 
 import requests
 from pydantic import BaseModel, ValidationError
@@ -54,7 +54,7 @@ def _flatten_schema(schema: Type[T]) -> dict:
     return _inline_refs(raw, definitions, ())
 
 
-def _inline_refs(node: object, definitions: dict, stack: tuple[str, ...]) -> object:
+def _inline_refs(node: Any, definitions: dict, stack: tuple[str, ...]) -> Any:
     """Recursively replace `$ref` nodes with their definition."""
     if isinstance(node, list):
         return [_inline_refs(item, definitions, stack) for item in node]
@@ -161,18 +161,17 @@ def _call_anthropic(prompt: str) -> str:
             timeout=HTTP_TIMEOUT,
         )
         resp.raise_for_status()
-        payload = resp.json()
-        if payload.get("stop_reason") == "max_tokens":
-            raise RuntimeError(
-                f"Anthropic response truncated at {MAX_TOKENS} tokens"
-            )
-        return _first_text_block(payload)
     except requests.HTTPError as e:
         raise RuntimeError(
             f"Anthropic API error: {e.response.status_code} — {e.response.text}"
         ) from e
-    except Exception as e:
-        raise RuntimeError(f"Anthropic call failed: {e}") from e
+    except requests.RequestException as e:
+        raise RuntimeError(f"Anthropic request failed: {e}") from e
+
+    payload = resp.json()
+    if payload.get("stop_reason") == "max_tokens":
+        raise RuntimeError(f"Anthropic response truncated at {MAX_TOKENS} tokens")
+    return _first_text_block(payload)
 
 
 def _call_anthropic_structured(
@@ -261,16 +260,17 @@ def _call_gemini(prompt: str) -> str:
             timeout=HTTP_TIMEOUT,
         )
         resp.raise_for_status()
-        candidate = resp.json()["candidates"][0]
-        if candidate.get("finishReason") == "MAX_TOKENS":
-            raise RuntimeError(f"Gemini response truncated at {MAX_TOKENS} tokens")
-        return candidate["content"]["parts"][0]["text"]
     except requests.HTTPError as e:
         raise RuntimeError(
             f"Gemini API error: {e.response.status_code} — {e.response.text}"
         ) from e
-    except Exception as e:
-        raise RuntimeError(f"Gemini call failed: {e}") from e
+    except requests.RequestException as e:
+        raise RuntimeError(f"Gemini request failed: {e}") from e
+
+    candidate = resp.json()["candidates"][0]
+    if candidate.get("finishReason") == "MAX_TOKENS":
+        raise RuntimeError(f"Gemini response truncated at {MAX_TOKENS} tokens")
+    return candidate["content"]["parts"][0]["text"]
 
 
 def _call_gemini_structured(
