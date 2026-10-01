@@ -30,6 +30,62 @@ def _gemini_url(model: str) -> str:
     )
 
 
+def _flatten_schema(schema: Type[T]) -> dict:
+    """Return `schema`'s JSON Schema, shaped for structured-output requests.
+
+    Pydantic emits `$defs` plus `$ref` for nested models. Neither Anthropic's
+    `output_config.format` nor Gemini's `responseSchema` documents support for
+    references, so definitions are inlined. `additionalProperties: false` is
+    added to every object: Anthropic requires it, Gemini accepts it.
+    """
+    raw = schema.model_json_schema()
+    definitions = raw.pop("$defs", {})
+    return _inline_refs(raw, definitions, ())
+
+
+def _inline_refs(node: object, definitions: dict, stack: tuple[str, ...]) -> object:
+    """Recursively replace `$ref` nodes with their definition."""
+    if isinstance(node, list):
+        return [_inline_refs(item, definitions, stack) for item in node]
+    if not isinstance(node, dict):
+        return node
+
+    ref = node.get("$ref")
+    if ref is not None:
+        name = ref.rsplit("/", 1)[-1]
+        if name in stack:
+            raise ValueError(
+                f"Recursive schema '{name}' cannot be inlined for structured output"
+            )
+        if name not in definitions:
+            raise ValueError(f"Unresolvable schema reference: {ref}")
+        resolved = _inline_refs(definitions[name], definitions, stack + (name,))
+        # Keys alongside a $ref (a description, say) override the definition.
+        siblings = {
+            key: _inline_refs(value, definitions, stack)
+            for key, value in node.items()
+            if key != "$ref"
+        }
+        return {**resolved, **siblings}
+
+    out = {
+        key: _inline_refs(value, definitions, stack)
+        for key, value in node.items()
+        if key != "$defs"
+    }
+    if out.get("type") == "object":
+        out["additionalProperties"] = False
+    return out
+
+
+def _first_text_block(payload: dict) -> str:
+    """Text of the first text block in an Anthropic response."""
+    for block in payload.get("content", []):
+        if block.get("type") == "text":
+            return block.get("text", "")
+    raise RuntimeError("Anthropic response contained no text block")
+
+
 def call_llm(prompt: str) -> str:
     """Plain text LLM call — no structured output."""
     provider = os.getenv("LLM_PROVIDER", "gemini")
@@ -108,14 +164,17 @@ def _call_anthropic_structured(
     max_retries: int,
 ) -> T:
     """
-    Anthropic API call with structured output (json_schema).
+    Anthropic structured output via `output_config.format`.
 
-    Retries on validation failure up to max_retries times.
+    The schema is enforced server-side, so the response is already valid JSON
+    of the right shape. The retry loop stays as a guard for the cases the API
+    does not cover: Pydantic is stricter than the schema it sends, because
+    constraint keywords are not part of the structured-output subset.
     """
-    # Generate JSON schema from Pydantic model
-    json_schema = schema.model_json_schema()
+    json_schema = _flatten_schema(schema)
+    last_error: Exception | None = None
 
-    for attempt in range(max_retries):
+    for _ in range(max_retries):
         try:
             resp = requests.post(
                 "https://api.anthropic.com/v1/messages",
@@ -128,56 +187,44 @@ def _call_anthropic_structured(
                     "model": _anthropic_model(),
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}],
-                    "betas": ["interleaved-thinking-2025-05-14"],
-                    "thinking": {"type": "enabled", "budget_tokens": 5000},
-                    "temperature": 1,  # Required for structured outputs with thinking
+                    "output_config": {
+                        "format": {"type": "json_schema", "schema": json_schema}
+                    },
                 },
             )
             resp.raise_for_status()
-            response_data = resp.json()
-
-            # Extract the JSON from response
-            # With structured outputs, content should be JSON
-            content = response_data["content"][0]
-
-            if content.get("type") == "thinking":
-                # Skip thinking block if present, get text block
-                for block in response_data["content"]:
-                    if block.get("type") == "text":
-                        content = block
-                        break
-
-            text = content.get("text", "")
-
-            # Parse JSON and validate
-            parsed = json.loads(text)
-            validated = schema.model_validate(parsed)
-            return validated
-
-        except json.JSONDecodeError as e:
-            if attempt == max_retries - 1:
-                raise RuntimeError(
-                    f"Failed to parse JSON after {max_retries} retries: {e}"
-                ) from e
-            # Retry on JSON parse error
-            continue
-        except ValidationError as e:
-            if attempt == max_retries - 1:
-                raise RuntimeError(
-                    f"Schema validation failed after {max_retries} retries:\n{e}"
-                ) from e
-            # Retry on validation error
-            continue
         except requests.HTTPError as e:
             raise RuntimeError(
                 f"Anthropic API error: {e.response.status_code} — {e.response.text}"
             ) from e
-        except Exception as e:
-            raise RuntimeError(f"Anthropic structured call failed: {e}") from e
+        except requests.RequestException as e:
+            raise RuntimeError(f"Anthropic request failed: {e}") from e
+
+        payload = resp.json()
+        stop_reason = payload.get("stop_reason")
+
+        # Both are 200 responses whose body does not satisfy the schema, so
+        # they have to be caught explicitly rather than left to validation.
+        if stop_reason == "refusal":
+            raise RuntimeError(
+                "Anthropic declined to answer this prompt (stop_reason=refusal)"
+            )
+        if stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Anthropic response hit the token limit and is truncated; "
+                "raise max_tokens or shorten the prompt"
+            )
+
+        try:
+            return schema.model_validate(json.loads(_first_text_block(payload)))
+        except (json.JSONDecodeError, ValidationError) as e:
+            last_error = e
+            continue
 
     raise RuntimeError(
-        f"Failed to get valid structured output after {max_retries} retries"
-    )
+        f"Anthropic structured output failed validation after {max_retries} "
+        f"attempts: {last_error}"
+    ) from last_error
 
 
 def _call_gemini(prompt: str) -> str:
