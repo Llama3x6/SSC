@@ -12,6 +12,17 @@ T = TypeVar("T", bound=BaseModel)
 # rejects requests without it.
 ANTHROPIC_VERSION = "2023-06-01"
 
+# (connect, read) seconds. Without a timeout a hung provider blocks the caller
+# for as long as the OS keeps the socket open, which for an agent run means a
+# process that never finishes and never reports why.
+HTTP_TIMEOUT = (10, 60)
+
+# Output ceiling, applied to both providers so switching LLM_PROVIDER does not
+# change how long a report can get. It is a cap, not a reservation: tokens are
+# billed as generated, so headroom is free. The longest report observed was
+# about 360 tokens.
+MAX_TOKENS = 1024
+
 
 def _anthropic_model() -> str:
     """Model id for Anthropic calls, overridable without touching the code."""
@@ -144,12 +155,18 @@ def _call_anthropic(prompt: str) -> str:
             },
             json={
                 "model": _anthropic_model(),
-                "max_tokens": 500,
+                "max_tokens": MAX_TOKENS,
                 "messages": [{"role": "user", "content": prompt}],
             },
+            timeout=HTTP_TIMEOUT,
         )
         resp.raise_for_status()
-        return resp.json()["content"][0]["text"]
+        payload = resp.json()
+        if payload.get("stop_reason") == "max_tokens":
+            raise RuntimeError(
+                f"Anthropic response truncated at {MAX_TOKENS} tokens"
+            )
+        return _first_text_block(payload)
     except requests.HTTPError as e:
         raise RuntimeError(
             f"Anthropic API error: {e.response.status_code} — {e.response.text}"
@@ -185,12 +202,13 @@ def _call_anthropic_structured(
                 },
                 json={
                     "model": _anthropic_model(),
-                    "max_tokens": 1000,
+                    "max_tokens": MAX_TOKENS,
                     "messages": [{"role": "user", "content": prompt}],
                     "output_config": {
                         "format": {"type": "json_schema", "schema": json_schema}
                     },
                 },
+                timeout=HTTP_TIMEOUT,
             )
             resp.raise_for_status()
         except requests.HTTPError as e:
@@ -236,10 +254,17 @@ def _call_gemini(prompt: str) -> str:
                 "Content-Type": "application/json",
                 "x-goog-api-key": os.environ["GEMINI_API_KEY"],
             },
-            json={"contents": [{"parts": [{"text": prompt}]}]},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": MAX_TOKENS},
+            },
+            timeout=HTTP_TIMEOUT,
         )
         resp.raise_for_status()
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        candidate = resp.json()["candidates"][0]
+        if candidate.get("finishReason") == "MAX_TOKENS":
+            raise RuntimeError(f"Gemini response truncated at {MAX_TOKENS} tokens")
+        return candidate["content"]["parts"][0]["text"]
     except requests.HTTPError as e:
         raise RuntimeError(
             f"Gemini API error: {e.response.status_code} — {e.response.text}"
@@ -276,8 +301,10 @@ def _call_gemini_structured(
                     "generationConfig": {
                         "responseMimeType": "application/json",
                         "responseSchema": json_schema,
+                        "maxOutputTokens": MAX_TOKENS,
                     },
                 },
+                timeout=HTTP_TIMEOUT,
             )
             resp.raise_for_status()
         except requests.HTTPError as e:

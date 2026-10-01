@@ -16,10 +16,15 @@ load_dotenv()
 BASE_URL = "http://localhost:8000"
 REPORT_FILE = "geopol_risk_report.txt"
 
+# (connect, read) seconds. The ERP is local so it should answer immediately;
+# GDELT is a third party and gets more room.
+ERP_TIMEOUT = (5, 15)
+GDELT_TIMEOUT = (5, 30)
+
 
 def fetch_data() -> dict:
     supplier_country = {}
-    for supplier in requests.get(f"{BASE_URL}/suppliers").json():
+    for supplier in requests.get(f"{BASE_URL}/suppliers", timeout=ERP_TIMEOUT).json():
         country = supplier["country"]
         if country is None:
             continue
@@ -43,16 +48,20 @@ COUNTRY_NAMES = {
 def fetch_news(country_code: str) -> list[str]:
     time.sleep(5)  # GDELT rate limits
     country_name = COUNTRY_NAMES.get(country_code, country_code)
-    query = f"{country_name} (trade OR tariff OR sanctions OR conflict OR supply chain OR port OR strike OR war OR tension)"
+    query = (
+        f"{country_name} (trade OR tariff OR sanctions OR conflict OR supply chain "
+        "OR port OR strike OR war OR tension) sourcelang:english"
+    )
     resp = requests.get(
         "https://api.gdeltproject.org/api/v2/doc/doc",
         params={
-            "query": f"{country_name} (trade OR tariff OR sanctions OR conflict OR supply chain OR port OR strike OR war OR tension) sourcelang:english",
+            "query": query,
             "mode": "artlist",
             "maxrecords": 5,
             "sort": "DateDesc",
             "format": "json",
         },
+        timeout=GDELT_TIMEOUT,
     )
     if resp.status_code != 200 or not resp.json().get("articles"):
         return []

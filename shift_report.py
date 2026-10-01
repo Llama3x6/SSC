@@ -13,6 +13,9 @@ BASE_URL = "http://localhost:8000"
 LOOKBACK_DAYS = 2
 REPORT_FILE = "shift_report.txt"
 
+# (connect, read) seconds for the local ERP.
+ERP_TIMEOUT = (5, 15)
+
 
 def fetch_data() -> dict:
     today = date.today()
@@ -20,23 +23,26 @@ def fetch_data() -> dict:
 
     # Recent orders via date filter
     orders = requests.get(
-        f"{BASE_URL}/orders", params={"from_date": start_date.isoformat()}
+        f"{BASE_URL}/orders",
+        params={"from_date": start_date.isoformat()},
+        timeout=ERP_TIMEOUT,
     ).json()
 
     # Suppliers involved in recent orders
     supplier_ids = {o["supplier_id"] for o in orders}
     active_suppliers = [
-        requests.get(f"{BASE_URL}/suppliers/{sid}").json() for sid in supplier_ids
+        requests.get(f"{BASE_URL}/suppliers/{sid}", timeout=ERP_TIMEOUT).json()
+        for sid in supplier_ids
     ]
 
     # Products below reorder threshold
-    products = requests.get(f"{BASE_URL}/products").json()
+    products = requests.get(f"{BASE_URL}/products", timeout=ERP_TIMEOUT).json()
     reorder_candidates = [
         p for p in products if p["current_stock"] <= p["reorder_threshold"]
     ]
 
     # Suppliers with contracts expiring within 31 days
-    all_suppliers = requests.get(f"{BASE_URL}/suppliers").json()
+    all_suppliers = requests.get(f"{BASE_URL}/suppliers", timeout=ERP_TIMEOUT).json()
     expiry_threshold = (today + timedelta(days=31)).isoformat()
     expiring_contracts = [
         s for s in all_suppliers if s["contract_valid_until"] <= expiry_threshold

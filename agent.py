@@ -12,6 +12,9 @@ from models import Order, Product, ReorderNarrative
 
 BASE_URL = "http://localhost:8000"
 
+# (connect, read) seconds for the local ERP.
+ERP_TIMEOUT = (5, 15)
+
 load_dotenv()
 
 
@@ -22,7 +25,7 @@ class AgentState(TypedDict):
 
 
 def fetch_products(state: AgentState) -> dict[str, Any]:
-    resp = requests.get(f"{BASE_URL}/products")
+    resp = requests.get(f"{BASE_URL}/products", timeout=ERP_TIMEOUT)
     products = [Product(**p) for p in resp.json()]
     reorder_products = [p for p in products if p.current_stock <= p.reorder_threshold]
 
@@ -45,6 +48,7 @@ def propose_reorder(state: AgentState) -> dict[str, Any]:
         resp = requests.get(
             f"{BASE_URL}/supplier-product/supplier_recommendations",
             params={"sku": product.sku},
+            timeout=ERP_TIMEOUT,
         )
 
         if resp.status_code != 200 or not resp.json():
@@ -111,7 +115,7 @@ def commit_orders(state: AgentState) -> dict[str, Any]:
     confirmed_orders = []
     for order in state["ordered"]:
         payload = order.model_dump(mode="json")
-        resp = requests.post(f"{BASE_URL}/orders", json=payload)
+        resp = requests.post(f"{BASE_URL}/orders", json=payload, timeout=ERP_TIMEOUT)
         if resp.status_code == 201:
             confirmed_orders.append(Order(**resp.json()))
         else:
