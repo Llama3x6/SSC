@@ -1,3 +1,5 @@
+# v1.1 in progress!
+
 # Sentient Supply Chain (SSC) v1.0
 
 A mock ERP system with an AI agent layer, built to demonstrate the translation 
